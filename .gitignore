@@ -1,0 +1,12 @@
+.ipynb_checkpoints/*
+*.pyc
+
+power/*
+epochs/*
+raw/*
+stats/*
+
+*.mat
+*.fif
+*.npz
+
