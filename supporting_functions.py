@@ -67,3 +67,37 @@ def create_events_square_wave(events):
     return filled_events
 
 
+def baseline_normalize(power, baseline, times):
+    """ Baseline normalizes according to the methodology described in
+    Grandchamp and Delorme, 2011 with the exception that we exclude the
+    stimulation from the initial full trial normalization step.
+
+    Inputs:
+    - power: # trials x # freqs x # time points array containing TFR power
+    - baseline: tuple delimiting the time boundaries of baseline period
+    - times: a list of time labels for each sample
+
+    Outpus:
+    - power: modified tfr power now baseline normalized
+    """
+
+    # first normalize by the median of the power across the entire trial
+    # excluding the stimulation period and stimulation edge artifacts
+    trial_mask = np.where(np.logical_or(times <= -.5, times >= 10.5))[0]
+    trial_norm = np.median(power[:, :, :, trial_mask],
+                           axis=-1)[:, :, :, np.newaxis]
+    power /= trial_norm
+
+    # median across trials
+    power = np.median(power, axis=0)
+
+    # normalize by median of pre-stimulation baseline period
+    bl_mask = np.where(np.logical_and(times >= baseline[0],
+                                      times <= baseline[1]))[0]
+    bl_norm = np.median(power[:, :, bl_mask], axis=-1)[:, :, np.newaxis]
+    power /= bl_norm
+
+    # log transform and scale
+    power = 10 * np.log10(power)
+
+    return power
