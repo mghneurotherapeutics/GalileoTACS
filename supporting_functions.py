@@ -101,3 +101,145 @@ def baseline_normalize(power, baseline, times):
     power = 10 * np.log10(power)
 
     return power
+
+
+def compute_toi_power(power, times, freqs, band, toi):
+
+    # extract band power
+    band_mask = np.where(np.logical_and(freqs >= band[0], freqs <= band[1]))
+    power = np.mean(power[:, band_mask, :].squeeze(), axis=1)
+
+    # average over array
+    power = power.mean(axis=0)
+
+    # average over time of interest
+    toi_mask = np.where(np.logical_and(times >= toi[0], times <= toi[1]))
+    power = power[toi_mask].mean()
+
+    return power
+
+
+def compute_bootstrap_p_value(power, bootstrap_dist, times, toi):
+
+    # reduce to toi
+    toi_mask = np.where(np.logical_and(times >= toi[0], times <= toi[1]))
+    power_toi = power[toi_mask].mean()
+    bootstrap_toi_dist = np.sort(bootstrap_dist[:, toi_mask].mean(axis=-1))
+
+    center_dist = bootstrap_toi_dist - power_toi
+
+    p_num = np.sum(np.abs(center_dist) >= np.abs(power_toi)) + 1.
+    p_denom = len(bootstrap_toi_dist) + 1.
+
+    return p_num / p_denom
+
+
+def compute_permutation_toi(perm_num, all_conditions_power, trial_indices,
+                            permutation_indices, times, freqs, alpha, beta,
+                            toi, baseline, conditions):
+
+    print(perm_num)
+
+    # collect power across conditions into single array
+    # we downsample to match trial sizes
+    power = []
+    for c in conditions:
+        trial_ix = trial_indices[c][perm_num, :]
+        power.append(all_conditions_power[c][trial_ix, :, :, :].squeeze())
+    power = np.vstack(power)
+
+    # permute the data
+    perm_ix = permutation_indices[perm_num, :]
+    power = power[perm_ix, :, :, :].squeeze()
+
+    # baseline normalize
+    cond_len = power.shape[0] / 2
+    tmp = []
+    tmp.append(baseline_normalize(power[:cond_len, :], baseline, times))
+    tmp.append(baseline_normalize(power[cond_len:, :], baseline, times))
+    power = tmp
+
+    # compute toi power difference
+    diffs = []
+    for band in [alpha, beta]:
+        c1_toi = compute_toi_power(power[0], times, freqs,
+                                   band, toi)
+        c2_toi = compute_toi_power(power[1], times, freqs,
+                                   band, toi)
+        diffs.append(c1_toi - c2_toi)
+
+    return diffs
+
+def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, alpha, beta,
+                             baseline):
+
+    # permute the data
+    power = power[bootstrap_ix, :, :, :].squeeze()
+
+    # baseline normalize
+    power = baseline_normalize(power, baseline, times)
+
+    # average over array
+    power = power.mean(axis=0)
+
+    # compute band power
+    output = []
+    for band in [alpha, beta]:
+        band_mask = np.where(np.logical_and(freqs >= band[0], freqs <= band[1]))
+        output.append(np.mean(power[band_mask, :].squeeze(), axis=0))
+
+    return output
+
+def bootstrap_standard_error(data, num_bootstraps, bootstrap_ix):
+    """
+    """
+
+    bootstrap_indices = np.random.choice(data.shape[bootstrap_ix],
+                                         size=(num_bootstraps,
+                                               data.shape[bootstrap_ix]),
+                                         replace=True)
+
+    bootstrap_samples = np.zeros([num_bootstraps] + [dim for dim in data.shape])
+    for i in range(num_bootstraps):
+        bootstrap_samples[i, :] = data[bootstrap_indices[i, :], :]
+
+    bootstrap_power = bootstrap_samples.mean(axis=bootstrap_ix + 1)
+    bootstrap_power = bootstrap_power / bootstrap_power.sum(axis=-1)[:, np.newaxis]
+    bootstrap_std_err = bootstrap_power.std(axis=0)
+    return bootstrap_std_err
+
+
+def pre_compute_permutation_indices(tests, sample_sizes, num_permutations,
+                                    seed=2129):
+
+    np.random.seed(seed)
+
+    permutation_indices = {}
+
+    for ss, t in zip(sample_sizes, tests):
+        permutations = np.zeros((num_permutations, ss * 2), dtype=np.int32)
+        ix = np.arange(ss * 2)
+        for i in range(num_permutations):
+            np.random.shuffle(ix)
+            permutations[i, :] = ix
+        permutation_indices[t] = permutations
+
+    return permutation_indices
+
+
+def pre_compute_subsample_indices(conditions, original_sample_sizes,
+                                  desired_sample_sizes, num_permutations,
+                                  seed=2129):
+
+    np.random.seed(seed)
+    trial_indices = {}
+
+    for oss, dss, c in zip(original_sample_sizes, desired_sample_sizes,
+                           conditions):
+        trial_indices[c] = np.zeros((num_permutations, dss), dtype=np.int32)
+        for i in range(num_permutations):
+            trial_indices[c][i, :] = np.random.choice(oss, size=dss,
+                                                      replace=False)
+
+    return trial_indices
+
