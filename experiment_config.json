@@ -9,5 +9,14 @@
     "baseline": [-5, -1],
     "alpha": [8, 15],
     "beta": [15, 30],
-    "toi": [10.5, 11]
+    "toi": [10.5, 11],
+    "bad_chs": ["elec1-83", "elec1-84"],
+    "main_sample_sizes": [100, 100, 80],
+    "saline_sample_sizes": [30, 30, 30],
+    "num_permutations": 5,
+    "num_bootstraps": 5,
+    "random_seed": 2129,
+    "n_jobs": 4,
+    "font_scale": 2,
+    "linewidth": 2.5
 }
