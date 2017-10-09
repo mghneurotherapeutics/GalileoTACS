@@ -15,7 +15,7 @@
     "tfr_epoch_width": 5,
 
     "random_seed": 2129,
-    "num_permutations": 5,
+    "num_permutations": 5000,
     "num_bootstraps": 5,
     "toi": [10.5, 11],
 

@@ -78,27 +78,6 @@ def create_mne_raw(blackrock_info):
     return raw
 
 
-def load_all_data(exp, condition):
-
-    file = './power/raw/ns2_%s_*_raw_power.npz' % condition
-    fnames = sorted(glob.glob(file))
-
-    if exp == 'saline':
-        fnames = [f for f in fnames if 'saline' in f]
-    else:
-        fnames = [f for f in fnames if 'saline' not in f]
-
-    tmp = np.load(fnames[0])
-    chs = tmp['chs']
-    times = tmp['times']
-    freqs = tmp['freqs']
-
-    power = [np.load(f)['data'] for f in fnames]
-    power = np.concatenate(power, axis=0)
-
-    return power, chs, times, freqs
-
-
 def create_events_square_wave(events):
     """ Takes an MNE events array consisting of pairs of onset and offset
     events and interpolates new events between these onset and offset events to
@@ -124,7 +103,25 @@ def create_events_square_wave(events):
     return filled_events
 
 
-# Data Processing Utilities
+def load_power_data(exp, condition):
+
+    file = '../data/power/ns2_%s_*_raw_power.npz' % condition
+    fnames = sorted(glob.glob(file))
+
+    if exp == 'saline':
+        fnames = [f for f in fnames if 'saline' in f]
+    else:
+        fnames = [f for f in fnames if 'saline' not in f]
+
+    tmp = np.load(fnames[0])
+    chs = tmp['chs']
+    times = tmp['times']
+    freqs = tmp['freqs']
+
+    power = [np.load(f)['data'] for f in fnames]
+    power = np.concatenate(power, axis=0)
+
+    return power, chs, times, freqs
 
 
 def baseline_normalize(power, baseline, times):
@@ -175,9 +172,10 @@ def reduce_toi_power(power, times, toi, axis):
     return power
 
 
-def reduce_array_power(power, chs, bad_chs, axis):
+def reduce_array_power(power, chs, bad_chs, array, axis):
 
-    ch_mask = [ix for ix in np.arange(len(chs)) if 'elec1' in chs[ix] and
-                                                   chs[ix] not in bad_chs]
+    arr_base = 'elec%s' % array
+    ch_mask = [ix for ix in np.arange(len(chs)) if arr_base in chs[ix] and
+               chs[ix] not in bad_chs]
     power = np.take(power, ch_mask, axis=axis).mean(axis=axis)
     return power

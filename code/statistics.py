@@ -1,9 +1,10 @@
 import numpy as np
 import json
-from data_processing import load_all_data, reduce_toi_power
+from data_processing import load_power_data, reduce_toi_power
 from data_processing import reduce_array_power, reduce_band_power
 from data_processing import baseline_normalize
 from joblib import Parallel, delayed
+from scipy.stats import ttest_ind
 
 # Bootstrap Functions
 
@@ -324,3 +325,73 @@ def compute_permutation_wrapper(ix):
                                       trial_indices,
                                       permutation_ix,
                                       times, freqs, chs, config, comp)
+
+
+def compute_array_permutation_distribution(exp):
+
+    with open('./experiment_config.json', 'r') as f:
+        config = json.load(f)
+
+    np.random.seed(config['random_seed'])
+
+    for condition in config['conditions']:
+        print(condition)
+
+        # load all data for condition
+        power, chs, times, freqs = load_power_data(exp, condition)
+
+        # baseline normalize and reduce to time of interest
+        power = baseline_normalize(power, config['baseline'], times)
+        power = reduce_toi_power(power, times, config['toi'], axis=-1)
+
+        perm_info = {}
+
+        for band in ['alpha', 'beta']:
+
+            perm_info['%s_perm_dist' % band] = []
+
+            # reduce to desired band
+            band_power = reduce_band_power(power, freqs, config[band], axis=-1)
+
+            # compute base t-statistic
+            arr1_ix = [ix for ix in np.arange(len(chs))
+                       if 'elec1' in chs[ix] and
+                       chs[ix] not in config['bad_chs']]
+            arr2_ix = [ix for ix in np.arange(len(chs)) if 'elec2' in chs[ix]]
+            perm_info['%s_diff' % band] = ttest_ind(band_power[arr1_ix],
+                                                    band_power[arr2_ix])[0]
+
+            # build the permutation distribution
+            for i in range(config['num_permutations']):
+
+                # shuffle channel membership
+                np.random.shuffle(chs)
+
+                # compute permutation t-statistic
+                arr1_ix = [ix for ix in np.arange(len(chs))
+                           if 'elec1' in chs[ix] and
+                           chs[ix] not in config['bad_chs']]
+                arr2_ix = [ix for ix in np.arange(len(chs))
+                           if 'elec2' in chs[ix]]
+                dist_ix = '%s_perm_dist' % band
+                perm_info[dist_ix].append(ttest_ind(band_power[arr1_ix],
+                                                    band_power[arr2_ix])[0])
+
+            # compute the p-value
+            tmp1 = '%s_p_value' % band
+            tmp2 = '%s_diff' % band
+            tmp3 = '%s_perm_dist' % band
+            perm_info[tmp1] = compute_permutation_p_value(perm_info[tmp2],
+                                                          perm_info[tmp3])
+
+        # save permutation info to file
+        f = '../stats/%s_experiment/' % exp + \
+            '%s_array_permutation_info.npz' % condition
+        np.savez_compressed(f, alpha_dist=perm_info['alpha_perm_dist'],
+                            beta_dist=perm_info['beta_perm_dist'],
+                            alpha_diff=perm_info['alpha_diff'],
+                            beta_diff=perm_info['beta_diff'],
+                            alpha_p_value=perm_info['alpha_p_value'],
+                            beta_p_value=perm_info['beta_p_value'])
+
+    print('Done!')
