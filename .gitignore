@@ -1,9 +1,8 @@
 .ipynb_checkpoints/*
 *.pyc
 
-power/*
-epochs/*
-raw/*
+old/*
+data/*
 stats/*
 
 *.mat
