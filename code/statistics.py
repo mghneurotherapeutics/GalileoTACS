@@ -22,7 +22,7 @@ def pre_compute_bootstrap_indices(exp):
                                                 size=(config['num_bootstraps'],
                                                       ss),
                                                 replace=True)
-    f = './stats/%s_experiment/condition_bootstrap_indices.npz' % exp
+    f = '../stats/%s_experiment/condition_bootstrap_indices.npz' % exp
     np.savez_compressed(f, Open=bootstrap_indices['Open'],
                         Closed=bootstrap_indices['Closed'],
                         Brain=bootstrap_indices['Brain'],
@@ -58,7 +58,7 @@ def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, chs, config):
     power = baseline_normalize(power, config['baseline'], times)
 
     # reduce over array
-    power = reduce_array_power(power, chs, config['bad_chs'], axis=0)
+    power = reduce_array_power(power, chs, config['bad_chs'], '1', axis=0)
 
     # reduce over band
     output = []
@@ -77,7 +77,7 @@ def compute_bootstrap_distribution(exp):
         config = json.load(f)
 
     # load in pre-computes bootstrap re-sample indices
-    f = './stats/%s_experiment/condition_bootstrap_indices.npz' % exp
+    f = '../stats/%s_experiment/condition_bootstrap_indices.npz' % exp
     bootstrap_indices = np.load(f)
     num_bootstrap_samples = bootstrap_indices['num_samples']
 
@@ -85,7 +85,7 @@ def compute_bootstrap_distribution(exp):
 
         print('Computing Bootstrap Distribution for Condition: %s' % condition)
 
-        power, chs, times, freqs = load_all_data(exp, condition)
+        power, chs, times, freqs = load_power_data(exp, condition)
 
         # compute the base band power
         base_ix = np.arange(power.shape[0])
@@ -110,7 +110,7 @@ def compute_bootstrap_distribution(exp):
                                            times, config['toi'])
 
         # save
-        f = './stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
+        f = '../stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
         np.savez_compressed(f, alpha=alpha_power, beta=beta_power,
                             alpha_dist=alpha_bootstrap_samples,
                             beta_dist=beta_bootstrap_samples,
@@ -176,8 +176,8 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     power = tmp
 
     # reduce over array
-    power[0] = reduce_array_power(power[0], chs, config['bad_chs'], axis=0)
-    power[1] = reduce_array_power(power[1], chs, config['bad_chs'], axis=0)
+    power[0] = reduce_array_power(power[0], chs, config['bad_chs'], '1', axis=0)
+    power[1] = reduce_array_power(power[1], chs, config['bad_chs'], '1', axis=0)
 
     # compute toi band power difference
     diffs = []

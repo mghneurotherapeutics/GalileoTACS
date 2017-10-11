@@ -6,13 +6,13 @@
 
     "lowpass": 35,
     "highpass": 0.5,
-    "epoch_width": 15,
+    "epoch_width": 10,
     "bad_chs": ["elec1-83", "elec1-84"],
     "baseline": [-5, -1],
     "alpha": [8, 15],
     "beta": [15, 30],
     "decim": 10,
-    "tfr_epoch_width": 5,
+    "tfr_epoch_width": 8,
 
     "random_seed": 2129,
     "num_permutations": 5000,

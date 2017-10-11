@@ -6,17 +6,21 @@ from mne.io import RawArray
 
 
 def extract_blackrock_info(mat_file, blackrock_type):
-    """ Extracts the data, sampling rate, channel names, and digital to
+    """ Extracts basic recording info from a blacrock extracted mat file.
+
+    Extracts the data, sampling rate, channel names, and digital to
     analog conversion factor from a blackrock extracted .mat file. hp5y was
     required instead of scipy.loadmat due to the large .mat file size.
 
-    Inputs:
-    - mat_file: string of filename representing a .mat file extracted from a
-    blackrock .ns2 or .ns4 file using OpenNSx
+    Args:
+        mat_file: string of filename representing a .mat file extracted from a
+            blackrock .ns2 or .ns5 file using OpenNSx
+        blackrock_type: a string either 'ns2' or 'ns5' denoting which type
+            of recording the .mat file contains
 
-    Outputs:
-    - info: dictionary containing the data, sampling rate,
-    channel names, and digital to analog conversion factor
+    Returns:
+        a dictionary containing the data, sampling rate,
+        channel names, and digital to analog conversion factor
     """
 
     info = {}
@@ -47,14 +51,14 @@ def extract_blackrock_info(mat_file, blackrock_type):
 
 def create_mne_raw(blackrock_info):
     """ Creates an MNE-Python raw object given a dictionary containing
-    recording information extracted from the blacrock datatype.
+    recording information extracted from the blacrock mat file.
 
-    Inputs:
-    - blackrock_info: dictionary containing the data, channel names,
-    sampling rate, and dac factor
+    Args:
+        blackrock_info: dictionary containing the data, channel names,
+            sampling rate, and dac factor
 
-    Outputs:
-    - raw: MNE-Python raw object for the data
+    Returns:
+        an MNE-Python raw object for the data
     """
 
     # create the MNE info object
@@ -83,13 +87,13 @@ def create_events_square_wave(events):
     events and interpolates new events between these onset and offset events to
     form a "square wave" for placement into an MNE stim channel.
 
-    Inputs:
-    - events: An MNE events array consisting of onset and offset paired events.
-    Must be even length.
+    Args:
+        events: An MNE events array consisting of onset and offset
+            paired events.
 
-    Outputs:
-    - filled_events: The new events array with samples between onset and offset
-    events filled with events.
+    Returns:
+        The new events array with samples between onset and offset
+            events filled with events.
     """
     filled_events = []
 
@@ -99,13 +103,26 @@ def create_events_square_wave(events):
         for j in range(onset, offset + 1):
             filled_events.append([j, 0, 1])
         i += 2
-    filled_events = np.array(filled_events)
-    return filled_events
+
+    return np.array(filled_events)
 
 
-def load_power_data(exp, condition):
+def load_power_data(exp, condition, typ='ns2'):
+    """ Loads all tfr power for a given experiment and condition.
 
-    file = '../data/power/ns2_%s_*_raw_power.npz' % condition
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+        condition: The condition to collect data for.
+            'Open', 'Closed', or 'Brain'
+        typ: The type of recording file to collect. 'ns2' or 'ns5'.
+
+    Returns:
+        A tuple containing the power data across all dates in a single array,
+        a list of channel names, a list of time labels, and a list of
+        frequency labels.
+    """
+
+    file = '../data/power/%s_%s_*_raw_power.npz' % (typ, condition)
     fnames = sorted(glob.glob(file))
 
     if exp == 'saline':
@@ -125,17 +142,26 @@ def load_power_data(exp, condition):
 
 
 def baseline_normalize(power, baseline, times):
-    """ Baseline normalizes according to the methodology described in
-    Grandchamp and Delorme, 2011 with the exception that we exclude the
-    stimulation from the initial full trial normalization step.
+    """ Baseline normalizes raw tfr power data according to
+    a slightly modified version of the normalization procedure suggested by
+    Grandchamp and Delorme, 2011.
 
-    Inputs:
-    - power: # trials x # freqs x # time points array containing TFR power
-    - baseline: tuple delimiting the time boundaries of baseline period
-    - times: a list of time labels for each sample
+    First, we divide the power data in each trial by the median of the
+    power across the entire trial (excluding the stimulation period and 0.5
+    seconds of buffer around the stimulation period). Then, we take the median
+    across all trials and divide the median power by the median of the
+    pre-stimulation baseline period. Finally, we log transform and multipy
+    by 10 to get a decibel representation.
 
-    Outpus:
-    - power: modified tfr power now baseline normalized
+    Args:
+        power: # trials x # chs x # freqs x # time points array
+            containing TFR power
+        baseline: tuple delimiting the time boundaries of baseline period
+        times: a list of time labels for each sample
+
+    Returns:
+        The modified tfr power array now baseline normalized (# chs x
+        # freqs x # time points)
     """
 
     # first normalize by the median of the power across the entire trial
@@ -161,18 +187,55 @@ def baseline_normalize(power, baseline, times):
 
 
 def reduce_band_power(power, freqs, band, axis):
+    """ Averages frequency content within a given frequency band range.
+
+    Args:
+        power: array containing tfr power
+        freqs: list of frequencies contained in the tfr power array
+        band: tuple containing the frequency band limits
+        axis: the axis containing the frequency data
+
+    Returns:
+        Returns a band power array where the frequency axis has been averaged
+        within the range supplied by band.
+    """
     band_mask = np.where(np.logical_and(freqs >= band[0], freqs <= band[1]))[0]
     power = np.take(power, band_mask, axis=axis).mean(axis=axis)
     return power
 
 
 def reduce_toi_power(power, times, toi, axis):
+    """ Averages across time withing a given period of interest.
+
+    Args:
+        power: array containing tfr power
+        times: list of time labels for each sample
+        toi: tuple containing the limits of the time period of interest
+        axis: the axis containing the time data
+
+    Returns:
+        Returns a power array where the time axis has been averaged
+        within the range supplied by toi.
+    """
     toi_mask = np.where(np.logical_and(times >= toi[0], times <= toi[1]))[0]
     power = np.take(power, toi_mask, axis=axis).mean(axis=axis)
     return power
 
 
 def reduce_array_power(power, chs, bad_chs, array, axis):
+    """ Averages across channels withing a given array.
+
+    Args:
+        power: array containing tfr power
+        chs: list of channel names
+        bad_chs: bad channels not to be included in average
+        array: which recording array to average over
+        axis: the axis containing the ch info
+
+    Returns:
+        Returns a power array where the channel axis has been averaged
+        within the selected chs supplied by array and bad_chs.
+    """
 
     arr_base = 'elec%s' % array
     ch_mask = [ix for ix in np.arange(len(chs)) if arr_base in chs[ix] and
