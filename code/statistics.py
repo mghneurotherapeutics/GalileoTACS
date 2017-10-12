@@ -6,10 +6,21 @@ from data_processing import baseline_normalize
 from joblib import Parallel, delayed
 from scipy.stats import ttest_ind
 
+
 # Bootstrap Functions
 
 
 def pre_compute_bootstrap_indices(exp):
+    """ Pre-computes bootstrap re-sampled indices to estimate error of
+        post-stimulation band power.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        None. Instead, writes out re-sampled indices for each condition
+        to compressed numpy file.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -30,7 +41,28 @@ def pre_compute_bootstrap_indices(exp):
 
 
 def compute_bootstrap_p_value(power, bootstrap_dist, times, toi):
+    """ Computes a bootstrap p-value to test the null hypothesis that
+        post stimuation band power within a time period of interest is equal
+        to zero.
 
+        Checks to see how unlikely the given post-stimulation band power
+        within a time period of interest is, given a bootstrapped null
+        distribution that we shift to center around 0. It does this by
+        calculating the % of bootstrapped values that are more extreme than
+        the calculated value.
+
+        Args:
+            power: The time series consisting of the non-bootstrapped band
+                power.
+            bootstrap_dist: The bootstrap distribution of band power.
+            times: List of time labels.
+            toi: Tuple containing the limits for the time period of interest.
+
+        Returns:
+            Returns the p-value (float) corresponding to the percentage of
+            bootstrapped toi values that were more extreme than the estimated
+            toi band power value.
+    """
     # reduce to toi
     bootstrap_dist = reduce_toi_power(bootstrap_dist, times, toi, axis=-1)
     power = reduce_toi_power(power, times, toi, axis=-1)
@@ -38,10 +70,11 @@ def compute_bootstrap_p_value(power, bootstrap_dist, times, toi):
     # sort by toi value
     bootstrap_dist = np.sort(bootstrap_dist)
 
-    # center the distribution to make it a "null hypothesis"
+    # center the distribution to make it a "null distribution"
+    # assumes symmetry of the distribution
     bootstrap_dist = bootstrap_dist - power
 
-    # compute the p-value as the percentage of boostrap values larger
+    # compute the p-value as the percentage of bootstrap values larger
     # in absolute value than the
     p_num = np.sum(np.abs(bootstrap_dist) >= np.abs(power)) + 1.
     p_denom = len(bootstrap_dist) + 1.
@@ -50,6 +83,27 @@ def compute_bootstrap_p_value(power, bootstrap_dist, times, toi):
 
 
 def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, chs, config):
+    """ Helper function to compute the bootstrapped band power for a
+    particular re-sampled index.
+
+    This function takes in the tfr power data, re-samples the trials in the
+    data according to the given re-sampled index, and then computes
+    baseline normalized band power averaged across the first recording array.
+
+    Args:
+        bootstrap_ix: A pre-computed trial re-sampling index.
+        power: The raw tfr power to compute the re-sampled band power on.
+        times: List of time labels.
+        freqs: List of frequency labels.
+        chs: List of channel names.
+        config: Dictionary containing experiment wide configuration info. In
+            this case it contains the baseline period to normalize to, bad chs
+            to ignore, and the frequency ranges for alpha and beta band.
+
+    Returns:
+        The re-sampled band power time series for the alpha and beta bands
+        in a length two list.
+    """
 
     # resample the data
     power = power[bootstrap_ix, :, :, :].squeeze()
@@ -68,7 +122,42 @@ def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, chs, config):
     return output
 
 
+def compute_bootstrap_wrapper(ix):
+    """ Simple wrapper function to facilitate parallelization of the
+        bootstrap sampling.
+
+        This function allows a single parameter function to be used for
+        parallelization. It simply calls compute_bootstrap_sample making
+        use of several arguments that were made global in
+        compute_bootstrap_distributions.
+
+        Args:
+            ix: The index of the re-sampled indices to use.
+    """
+
+    return compute_bootstrap_sample(bootstrap_cond_ix[ix], power,
+                                    times, freqs, chs, config)
+
+
 def compute_bootstrap_distribution(exp):
+    """ Computes bootstrap distributions for alpha and beta band power for all
+    three stimulation conditions.
+
+    For each condition, it loads that condition's raw tfr and pre-computed
+    bootstrap sampled indices. It then runs through each re-sampled index
+    and computes the re-sampled band power to create a bootstrap distribution.
+    Finally, it computes a bootstrap p-value testing for post-stimulation
+    toi power differences from 0.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        None. It saves all of the bootstrap information, including the
+        band power estimates, the band power bootstrap distributions, and
+        the post-stimulation toi bootstrap p-values into a compressed
+        numpy file.
+    """
 
     global power, times, freqs, chs, bootstrap_cond_ix, config
 
@@ -95,7 +184,9 @@ def compute_bootstrap_distribution(exp):
 
         # loop through all bootstrap samples in parallel
         bootstrap_cond_ix = bootstrap_indices[condition]
-        bootstrap_samples = Parallel(n_jobs=config['n_jobs'])(delayed(compute_bootstrap_wrapper)(ix) for ix in range(num_bootstrap_samples))
+        par = Parallel(n_jobs=config['n_jobs'])
+        bootstrap_samples = par(delayed(compute_bootstrap_wrapper)(ix)
+                                for ix in range(num_bootstrap_samples))
 
         # collect all the bootstrap samples into single matrix
         alpha_bootstrap_samples = np.vstack([s[0] for s in bootstrap_samples])
@@ -117,24 +208,31 @@ def compute_bootstrap_distribution(exp):
                             alpha_p=alpha_p, beta_p=beta_p, times=times)
 
 
-# simple wrapper function to allow parallel computation
-def compute_bootstrap_wrapper(ix):
-    return compute_bootstrap_sample(bootstrap_cond_ix[ix], power,
-                                    times, freqs, chs, config)
+def simple_bootstrap(data, axis):
+    """ Computes a bootstrap re-sampled distribution for data on the given
+        axis.
 
+        Args:
+            data: The data to compute the bootstrap distribution for.
+            axis: The axis along which to resample.
 
-def simple_bootstrap(data, num_bootstraps, axis):
+        Returns:
+            Returns the bootstrap distribution for the re-sampled data.
     """
-    """
+    # load in configurations
+    with open('./experiment_config.json', 'r') as f:
+        config = json.load(f)
+
+    np.random.seed(config['random_seed'])
 
     bootstrap_indices = np.random.choice(data.shape[axis],
-                                         size=(num_bootstraps,
+                                         size=(config['num_bootstraps'],
                                                data.shape[axis]),
                                          replace=True)
 
-    bootstrap_samples = np.zeros([num_bootstraps] +
+    bootstrap_samples = np.zeros([config['num_bootstraps']] +
                                  [dim for dim in data.shape])
-    for i in range(num_bootstraps):
+    for i in range(config['num_bootstraps']):
         bootstrap_samples[i, :] = data[bootstrap_indices[i, :], :]
 
     return bootstrap_samples
@@ -143,9 +241,131 @@ def simple_bootstrap(data, num_bootstraps, axis):
 # Permutation Testing Functions
 
 
+def pre_compute_subsample_indices(exp):
+    """ Pre-computes subsample indices to equalize trial counts between
+    conditions to faciliate permuation testing.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        None. Saves out the sub-sampled indices for each condition to file.
+    """
+    with open('./experiment_config.json', 'r') as f:
+        config = json.load(f)
+
+    np.random.seed(config['random_seed'])
+
+    trial_indices = {}
+
+    sample_sizes = config['%s_sample_sizes' % exp]
+    for oss, dss, c in zip(sample_sizes, [min(sample_sizes)] * 3,
+                           config['conditions']):
+        trial_indices[c] = np.zeros((config['num_permutations'], dss),
+                                    dtype=np.int32)
+        for i in range(config['num_permutations']):
+            trial_indices[c][i, :] = np.random.choice(oss, size=dss,
+                                                      replace=False)
+
+    f = '../stats/%s_experiment/condition_subsample_indices.npz'
+    np.savez_compressed(f % exp, Closed=trial_indices['Closed'],
+                        Brain=trial_indices['Brain'],
+                        Open=trial_indices['Open'])
+
+
+def pre_compute_permutation_indices(exp):
+    """ Pre-computes permutation indices to permute trial condition labels
+    between two stimulation conditions of data.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        None. Saves out the pemurtation indices for each condition pair to
+        file.
+    """
+
+    with open('./experiment_config.json', 'r') as f:
+        config = json.load(f)
+
+    tests = ['Open-Closed', 'Open-Brain', 'Brain-Closed']
+
+    np.random.seed(config['random_seed'])
+
+    permutation_indices = {}
+
+    for ss, t in zip(config['%s_sample_sizes' % exp], tests):
+        permutations = np.zeros((config['num_permutations'], ss * 2),
+                                dtype=np.int32)
+        ix = np.arange(ss * 2)
+        for i in range(config['num_permutations']):
+            np.random.shuffle(ix)
+            permutations[i, :] = ix
+        permutation_indices[t] = permutations
+
+    f = '../stats/%s_experiment/condition_permutation_indices.npz'
+    np.savez_compressed(f % exp,
+                        Open_Closed=permutation_indices['Open-Closed'],
+                        Open_Brain=permutation_indices['Open-Brain'],
+                        Brain_Closed=permutation_indices['Brain-Closed'],
+                        num_permutations=config['num_permutations'])
+
+
+def compute_permutation_p_value(base_power, permutation_dist):
+    """ Computes a permutation test p-value.
+
+    P-value computed as the percentage of values in the permutation
+    distribution more extreme than the actual test statistic (difference)
+    of two condition band power toi averages.
+
+    Args:
+        base_power: The non-permuted difference in band toi power between
+            conditions.
+        permutation_dist: The permutation distribution of band toi power
+            differences.
+
+    Returns:
+        Permutation p-value (float).
+
+    """
+    num = np.sum(np.abs(np.array(permutation_dist)) >=
+                 np.abs(base_power)) + 1.
+    denom = len(permutation_dist) + 1.
+    return num / denom
+
+
 def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
                                permutation_indices, times, freqs, chs, config,
                                comp):
+    """ Helper function to compute the permuted toi band power difference for
+    a particular permutation of trials between two conditions.
+
+    This function takes in the tfr power data for two conditions, permutes
+    the trial membership between the two conditions according to the given
+    permutation index, and then computes the baseline-normalized band power
+    averaged across the first recording array and a post-stimulation time
+    period of interest for each condition and returns their difference.
+
+    Args:
+        perm_num: The permutation number used to index a particular
+            permutation index and sub-sample index.
+        all_conditions_power: Dictionary containing the tfr power data for
+            each condition being tested.
+        trial_indices: The pre-computed sub-sampling indices.
+        permutation_indices: The pre-computed permutation indices.
+        times: List of time labels.
+        freqs: List of frequency labels.
+        chs: List of channel names.
+        config: Dictionary containing experiment wide configuration info. In
+            this case it contains the baseline period to normalize to, bad chs
+            to ignore, time period to average over, and the frequency ranges
+            for alpha and beta band.
+        comp: List of the two conditions to compare.
+
+    Returns:
+        List of two numbers representing the permuted difference between
+        the two conditions for the alpha and beta bands.
+    """
 
     # collect power across conditions into single array
     # we downsample to match trial sizes
@@ -176,8 +396,10 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     power = tmp
 
     # reduce over array
-    power[0] = reduce_array_power(power[0], chs, config['bad_chs'], '1', axis=0)
-    power[1] = reduce_array_power(power[1], chs, config['bad_chs'], '1', axis=0)
+    power[0] = reduce_array_power(power[0], chs, config['bad_chs'], '1',
+                                  axis=0)
+    power[1] = reduce_array_power(power[1], chs, config['bad_chs'], '1',
+                                  axis=0)
 
     # compute toi band power difference
     diffs = []
@@ -196,65 +418,46 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     return diffs
 
 
-def compute_permutation_p_value(base_power, permutation_dist):
-    num = np.sum(np.abs(np.array(permutation_dist)) >= np.abs(base_power)) + 1.
-    denom = len(permutation_dist) + 1.
-    return num / denom
+def compute_permutation_wrapper(ix):
+    """ Simple wrapper function to facilitate parallelization of the
+    permutations.
 
+    This function allows a single parameter function to be used for
+    parallelization. It simply calls compute_permutation_sample making
+    use of several arguments that were made global in
+    compute_permutation_distributions.
 
-def pre_compute_permutation_indices(exp):
+    Args:
+        ix: The index of the re-sampled indices to use.
+    """
 
-    with open('./experiment_config.json', 'r') as f:
-        config = json.load(f)
-
-    tests = ["Open-Closed", "Open-Brain", "Brain-Closed"]
-
-    np.random.seed(config['random_seed'])
-
-    permutation_indices = {}
-
-    for ss, t in zip(config['%s_sample_sizes' % exp], tests):
-        permutations = np.zeros((config['num_permutations'], ss * 2),
-                                dtype=np.int32)
-        ix = np.arange(ss * 2)
-        for i in range(config['num_permutations']):
-            np.random.shuffle(ix)
-            permutations[i, :] = ix
-        permutation_indices[t] = permutations
-
-    np.savez_compressed("./stats/%s_experiment/condition_permutation_indices.npz" % exp,
-                        Open_Closed=permutation_indices["Open-Closed"],
-                        Open_Brain=permutation_indices["Open-Brain"],
-                        Brain_Closed=permutation_indices["Brain-Closed"],
-                        num_permutations=config['num_permutations'])
-
-
-def pre_compute_subsample_indices(exp):
-
-    with open('./experiment_config.json', 'r') as f:
-        config = json.load(f)
-
-    np.random.seed(config['random_seed'])
-
-    trial_indices = {}
-
-    sample_sizes = config['%s_sample_sizes' % exp]
-    for oss, dss, c in zip(sample_sizes, [min(sample_sizes)] * 3,
-                           config['conditions']):
-        trial_indices[c] = np.zeros((config['num_permutations'], dss),
-                                    dtype=np.int32)
-        for i in range(config['num_permutations']):
-            trial_indices[c][i, :] = np.random.choice(oss, size=dss,
-                                                      replace=False)
-
-    np.savez_compressed('./stats/%s_experiment/condition_subsample_indices.npz' % exp,
-                        Closed=trial_indices['Closed'],
-                        Brain=trial_indices['Brain'],
-                        Open=trial_indices['Open'])
-    return trial_indices
+    return compute_permutation_sample(ix, all_conditions_power,
+                                      trial_indices,
+                                      permutation_ix,
+                                      times, freqs, chs, config, comp)
 
 
 def compute_permutation_distributions(exp):
+    """ Computes permutation distributions for alpha and beta band power
+    for all three pairs stimulation conditions differences.
+
+    For each condition pair, it loads those condition's raw tfr power data.
+    It then runs through each sub-sample index and permutation index to
+    equalize trial counts and then permute trial membership between the two
+    conditions in order to calculate the difference between the mean
+    post-stimulation band toi power creating a permutation distribution.
+    Finally, it computes a permutation p-value testing for post-stimulation
+    toi power differences between conditions.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        None. It saves all of the permutation information, including the
+        band power toi difference estimates, the permutation distributions,
+        and the post-stimulation condition difference p-values into a
+        compressed numpy file.
+    """
 
     global all_conditions_power, times, freqs, chs, trial_indices
     global permutation_ix, comp, config
@@ -278,12 +481,13 @@ def compute_permutation_distributions(exp):
     comparisons = [['Open', 'Closed'], ['Open', 'Brain'], ['Brain', 'Closed']]
     for comp in comparisons:
 
-        print('Computing Permutation Distribution for Condition Comparison: %s-%s' %(comp[0], comp[1]))
+        print('Computing Permutation Distribution for Condition ' +
+              'Comparison: %s-%s' % (comp[0], comp[1]))
 
         # collect all power for the relevant conditions
         all_conditions_power = {}
         for condition in comp:
-            power, chs, times, freqs = load_all_data('saline', condition)
+            power, chs, times, freqs = load_power_data('saline', condition)
             all_conditions_power[condition] = power
 
         # get the permutation index
@@ -293,41 +497,61 @@ def compute_permutation_distributions(exp):
         # compute the base difference
         base_diffs = compute_permutation_sample(-1, all_conditions_power,
                                                 trial_indices, permutation_ix,
-                                                times, freqs, chs, config, comp)
+                                                times, freqs, chs, config,
+                                                comp)
         for i, band in enumerate(['alpha', 'beta']):
             permutation_info['%s_diff' % band] = base_diffs[i]
 
         num_permutations = permutation_indices['num_permutations']
-        perm_diffs = Parallel(config['n_jobs'])(delayed(compute_permutation_wrapper)(ix) for ix in range(num_permutations))
+        par = Parallel(config['n_jobs'])
+        perm_diffs = par(delayed(compute_permutation_wrapper)(ix)
+                         for ix in range(num_permutations))
 
         permutation_info['alpha_perm_dist'] = [diff[0] for diff in perm_diffs]
         permutation_info['beta_perm_dist'] = [diff[1] for diff in perm_diffs]
 
         # compute p-values
-        permutation_info['alpha_p_value'] = compute_permutation_p_value(permutation_info['alpha_diff'],
-                                                                        permutation_info['alpha_perm_dist'])
-        permutation_info['beta_p_value'] = compute_permutation_p_value(permutation_info['beta_diff'],
-                                                                        permutation_info['beta_perm_dist'])
+        tmp = compute_permutation_p_value(permutation_info['alpha_diff'],
+                                          permutation_info['alpha_perm_dist'])
+        permutation_info['alpha_p_value'] = tmp
+
+        tmp = compute_permutation_p_value(permutation_info['beta_diff'],
+                                          permutation_info['beta_perm_dist'])
+        permutation_info['beta_p_value'] = tmp
 
         # save the permutation information
-        np.savez_compressed('./stats/%s_experiment/%s-%s_%s_permutation_info.npz' %(exp, comp[0], comp[1], exp),
-                            alpha_dist = permutation_info['alpha_perm_dist'],
-                            beta_dist = permutation_info['beta_perm_dist'],
-                            alpha_diff = permutation_info['alpha_diff'],
+        f = './stats/%s_experiment/%s-%s_%s_permutation_info.npz'
+        np.savez_compressed(f % (exp, comp[0], comp[1], exp),
+                            alpha_dist=permutation_info['alpha_perm_dist'],
+                            beta_dist=permutation_info['beta_perm_dist'],
+                            alpha_diff=permutation_info['alpha_diff'],
                             beta_diff=permutation_info['beta_diff'],
                             num_permutations=num_permutations,
-                            alpha_p_value = permutation_info['alpha_p_value'],
-                            beta_p_value = permutation_info['beta_p_value'])
-
-
-def compute_permutation_wrapper(ix):
-    return compute_permutation_sample(ix, all_conditions_power,
-                                      trial_indices,
-                                      permutation_ix,
-                                      times, freqs, chs, config, comp)
+                            alpha_p_value=permutation_info['alpha_p_value'],
+                            beta_p_value=permutation_info['beta_p_value'])
 
 
 def compute_array_permutation_distribution(exp):
+    """ Computes permutation distributions for alpha and beta band power
+    difference between the two recording arrays for all three conditions.
+
+    For each condition, it loads those condition's raw tfr power data. It
+    then baseline normalizes the power and reduces to band power and averages
+    over a post-stimulation time of interest. Then it permutes recording
+    array membership to generate a permutation distribution of differences
+    between recording array averages. Finally, it computes a permutation
+    p-value testing for post-stimulation toi power differences between
+    recording arrays for each condition.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        None. It saves all of the permutation information, including the
+        band power toi difference estimates, the permutation distributions,
+        and the post-stimulation array difference p-values into a
+        compressed numpy file.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -351,7 +575,8 @@ def compute_array_permutation_distribution(exp):
             perm_info['%s_perm_dist' % band] = []
 
             # reduce to desired band
-            band_power = reduce_band_power(power, freqs, config[band], axis=-1)
+            band_power = reduce_band_power(power, freqs, config[band],
+                                           axis=-1)
 
             # compute base t-statistic
             arr1_ix = [ix for ix in np.arange(len(chs))
