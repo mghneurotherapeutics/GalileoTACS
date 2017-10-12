@@ -13,6 +13,18 @@ from statistics import simple_bootstrap
 # condition comparisons
 
 def plot_condition_band_comparison(exp):
+    """ Plots the pre- and post-stimulation alpha and beta time series
+    for all three conditions.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 1 x 2 matplotlib figure. Each subplot contains alpha and beta band
+        time series for all three conditions with bootstrap standard error
+        shading. The stimulation period is ignored and centered at 0 with a
+        +- 0.5 blacked out period representing stimulation edge artifact.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -27,9 +39,12 @@ def plot_condition_band_comparison(exp):
         f = '../stats/%s_experiment/%s_bootstrap_info.npz'
         bootstrap_info = np.load(f % (exp, c))
 
+        # remove the stimulation period from the time labels
         times = bootstrap_info['times']
-        pre_mask = np.logical_and(times >= -18, times <= -.5)
-        post_mask = np.logical_and(times >= 10.5, times <= 28)
+        pre_mask = np.logical_and(times >= -config['tfr_epoch_width'],
+                                  times <= -.5)
+        post_mask = np.logical_and(times >= 10.5,
+                                   times <= 10 + config['tfr_epoch_width'])
         time_mask = np.where(np.logical_or(pre_mask, post_mask))[0]
         times = times[time_mask]
         times[times >= 10] -= 10
@@ -51,15 +66,21 @@ def plot_condition_band_comparison(exp):
             axs[i].set_xlabel("Time (s)")
 
             axs[i].set_ylim((-5, 5))
-            axs[i].set_xticks([-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5])
-            axs[i].set_xticklabels([-5, -4, -3, -2, -1, 'Stim', 1, 2, 3, 4, 5])
-            axs[i].set_xlim((-8, 8))
+
+            xlim = 5
+            xticks = list(np.arange(-xlim, xlim + 1))
+            xticklabels = xticks.replace(0, 'Stim')
+            axs[i].set_xticks(xticks)
+            axs[i].set_xticklabels(xticklabels)
+            axs[i].set_xlim((-xlim, xlim))
 
             sns.despine()
 
+    # blackout the stimulation period
     for i in np.arange(-.5, .5, .01):
         axs[0].axvline(i, color='k', alpha=0.8)
         axs[1].axvline(i, color='k', alpha=0.8)
+
     axs[0].legend(config['conditions'])
     axs[0].set_ylabel("dB Change From Baseline")
 
@@ -68,6 +89,18 @@ def plot_condition_band_comparison(exp):
 
 
 def plot_condition_toi_comparison(exp):
+    """ Plots the pre- and post-stimulation alpha and beta time of interest
+    averages for all three conditions.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 1 x 2 matplotlib figure. Each subplot contains alpha and beta band
+        toi average barplots for all three conditions with bootstrap 95% CI
+        bars and significance marking between conditions based on
+        permutation testing.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -128,9 +161,24 @@ def plot_condition_toi_comparison(exp):
     sns.despine()
     return fig
 
+
 # array comparisons
 
+
 def plot_array_band_comparison(exp):
+    """ Plots the pre- and post-stimulation alpha and beta time series
+    for all three conditions compared between recording arrays.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 2 x 3 matplotlib figure (frequency band x condition). Each subplot
+        contains array1 and array2 time series for a particular condition and
+        frequency band with bootstrap standard error shading. The stimulation
+        period is ignored and centered at 0 with a +- 0.5 blacked out period
+        representing stimulation edge artifact.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -172,7 +220,8 @@ def plot_array_band_comparison(exp):
 
             for k, arr in enumerate([arr1_ix, arr2_ix]):
                 arr_power = band_power[arr, time_mask].mean(axis=0)
-                arr_stderr = band_power[arr, time_mask].std(axis=0) / np.sqrt(len(arr))
+                arr_stderr = band_power[arr, time_mask].std(axis=0) / \
+                    np.sqrt(len(arr))
 
                 axs[j, i].plot(times, arr_power, color=config['colors'][i],
                                linestyle=ls[k])
@@ -206,6 +255,18 @@ def plot_array_band_comparison(exp):
 
 
 def plot_array_toi_comparison(exp):
+    """ Plots the pre- and post-stimulation alpha and beta time of interest
+    averages for all three conditions comparing the two arrays.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 1 x 2 matplotlib figure. Each subplot contains alpha and beta band
+        toi average barplots for all three conditions split by recording array
+        with bootstrap standard error bars and significance marking between
+        array averages based on permutation testing.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -291,7 +352,20 @@ def plot_array_toi_comparison(exp):
 
 # statistics
 
+
 def plot_bootstrap_distributions(exp):
+    """ Plots the bootstrap toi power distributions for each stimulation
+    condition and frequency band.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 2 x 3 matplotlib figure. Each subplot contains the bootstrap
+        distribution for a particular condition and frequency band.
+        Additionally, the estimated toi power and bootstrap 95% CI are
+        plotted as vertical lines.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -338,6 +412,18 @@ def plot_bootstrap_distributions(exp):
 
 
 def plot_permutation_distributions(exp):
+    """ Plots the permutaion toi power difference distributions for each
+    pair of stimulation conditions and frequency band.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 2 x 3 matplotlib figure. Each subplot contains the permutation
+        distribution for a particular condition comparison and frequency band.
+        Additionally, the estimated toi power difference and bootstrap 95% CI
+        are plotted as vertical lines.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -352,7 +438,7 @@ def plot_permutation_distributions(exp):
     plt.subplots_adjust(hspace=0.4, wspace=0.2)
 
     for i, comp in enumerate(comparisons):
-        f = './stats/%s_experiment/%s_%s_permutation_info.npz'
+        f = '../stats/%s_experiment/%s_%s_permutation_info.npz'
         perm_info = np.load(f % (exp, comp, exp))
 
         # plot permutation distribution
@@ -378,6 +464,18 @@ def plot_permutation_distributions(exp):
 
 
 def plot_array_permutation_distributions(exp):
+    """ Plots the permutaion toi power difference distributions between r
+    recording arrays for each stimulation condition and frequency band.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 2 x 3 matplotlib figure. Each subplot contains the permutation
+        distribution for a particular condition and frequency band between
+        recording arrays. Additionally, the estimated toi power difference and
+        permutation 95% CI are plotted as vertical lines.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -414,6 +512,18 @@ def plot_array_permutation_distributions(exp):
 # revision plots
 
 def plot_before_during_after_spectra(exp):
+    """ Plots the power spectrum for the 0.5 seconds immediately
+    pre-stimulation, the stimulation period, and the 0.5 seconds immediately
+    post-stimulation.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 1 x 3 matplotlib figure. Each subplot contains the normalized by sum
+        of power spectrum for each condition for a period before, during,
+        and after stimulation. Shading is bootstrap standard error.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
@@ -478,7 +588,7 @@ def plot_early_vs_late_stim_spectra(exp):
 
     Outputs:
     - fig: 1 x 3 plot where each plot contains the first and last 5 seconds
-    of stimulation spectra for each condition
+    of stimulation spectra for each condition.
     """
 
     with open('./experiment_config.json', 'r') as f:
@@ -533,6 +643,19 @@ def plot_early_vs_late_stim_spectra(exp):
 
 
 def plot_controlling_spectra(exp):
+    """ Plots the stimulation power spectrum for the bipolar referenced
+    electrode that provided the feedback signal for stimulation and a copy
+    of the stimulation command stored in the .ns5 files.
+
+    Args:
+        exp: The experiment to collect data for. 'main' or 'saline'
+
+    Returns:
+        A 1 x 3 matplotlib figure. Each subplot contains the normalized by sum
+        of power spectrum for the controlling bipolar referenced electrode
+        and a copy of the stimulation command for a particular condition.
+        Shading is bootstrap standard error.
+    """
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
