@@ -65,11 +65,11 @@ def plot_condition_band_comparison(exp):
 
             axs[i].set_xlabel("Time (s)")
 
-            axs[i].set_ylim((-5, 5))
+            axs[i].set_ylim((-1, 1))
 
-            xlim = 5
+            xlim = 3
             xticks = list(np.arange(-xlim, xlim + 1))
-            xticklabels = xticks.replace(0, 'Stim')
+            xticklabels = ['Stim' if x == 0 else x for x in xticks]
             axs[i].set_xticks(xticks)
             axs[i].set_xticklabels(xticklabels)
             axs[i].set_xlim((-xlim, xlim))
@@ -141,6 +141,7 @@ def plot_condition_toi_comparison(exp):
 
             axs[i].set_xlim((.8, 4))
             axs[i].set_xticks(())
+            axs[i].set_ylim((-.7, .7))
 
     axs[1].legend(config['conditions'], loc=8)
     axs[0].axhline(0, color='k')
@@ -194,6 +195,11 @@ def plot_array_band_comparison(exp):
     xticklabels = ['Stim' if x == 0 else x for x in xticks]
     ls = ['-', '--']
 
+    # hack the legend to be color agnostic
+    axs[0, 2].axvline(-3, color='k')
+    axs[0, 2].axvline(-3, color='k', linestyle='--')
+    axs[0, 2].legend(['Array 1', 'Array 2'])
+
     for i, c in enumerate(config['conditions']):
 
         power, chs, times, freqs = load_power_data(exp, c)
@@ -207,11 +213,12 @@ def plot_array_band_comparison(exp):
         post_mask = np.logical_and(times >= 10.5, times <= 15)
         time_mask = np.where(np.logical_or(pre_mask, post_mask))[0]
         times = times[time_mask]
+        power = power[:, :, time_mask]
         times[times >= 10] -= 10
 
         # array indices
         arr1_ix = [ix for ix in np.arange(len(chs)) if 'elec1' in chs[ix] and
-                   chs[ix] not in config['bad_chs']]
+                   chs[ix] not in config['%s_bad_chs' % exp]]
         arr2_ix = [ix for ix in np.arange(len(chs)) if 'elec2' in chs[ix]]
 
         for j, band in enumerate(['alpha', 'beta']):
@@ -219,8 +226,8 @@ def plot_array_band_comparison(exp):
             band_power = reduce_band_power(power, freqs, config[band], axis=1)
 
             for k, arr in enumerate([arr1_ix, arr2_ix]):
-                arr_power = band_power[arr, time_mask].mean(axis=0)
-                arr_stderr = band_power[arr, time_mask].std(axis=0) / \
+                arr_power = band_power[arr, :].mean(axis=0)
+                arr_stderr = band_power[arr, :].std(axis=0) / \
                     np.sqrt(len(arr))
 
                 axs[j, i].plot(times, arr_power, color=config['colors'][i],
@@ -248,7 +255,6 @@ def plot_array_band_comparison(exp):
                 axs[j, i].axvline(x, color='k', alpha=0.8, label='_nolegend_')
 
     plt.tight_layout()
-    axs[0, 2].legend(['Array 1', 'Array 2'])
     sns.despine()
 
     return fig
@@ -292,7 +298,7 @@ def plot_array_toi_comparison(exp):
 
         # array indices
         arr1_ix = [ix for ix in np.arange(len(chs)) if 'elec1' in chs[ix] and
-                   chs[ix] not in config['bad_chs']]
+                   chs[ix] not in config['%s_bad_chs' % exp]]
         arr2_ix = [ix for ix in np.arange(len(chs)) if 'elec2' in chs[ix]]
 
         for j, band in enumerate(['alpha', 'beta']):
@@ -378,7 +384,7 @@ def plot_bootstrap_distributions(exp):
 
     for i, condition in enumerate(config['conditions']):
 
-        f = '../stats/saline_experiment/%s_bootstrap_info.npz' % condition
+        f = '../stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
         bootstrap_info = np.load(f)
 
         for j, band in enumerate(['alpha', 'beta']):
@@ -541,13 +547,13 @@ def plot_before_during_after_spectra(exp):
 
             power, chs, times, freqs = load_power_data(exp, condition)
 
-            power = reduce_array_power(power, chs, config['bad_chs'], axis=1)
+            power = reduce_array_power(power, chs, config['%s_bad_chs' % exp],
+                                       '1', axis=1)
 
             power = reduce_toi_power(power, times, config[time_period],
                                      axis=-1)
 
-            bootstrap_dist = simple_bootstrap(power, config['num_bootstraps'],
-                                              axis=0)
+            bootstrap_dist = simple_bootstrap(power, axis=0)
 
             # reduce over trials
             power = power.mean(axis=0)
@@ -611,7 +617,8 @@ def plot_early_vs_late_stim_spectra(exp):
         power = power.mean(axis=0)
 
         # average over array1
-        power = reduce_array_power(power, chs, config['bad_chs'], '1', 0)
+        power = reduce_array_power(power, chs, config['%s_bad_chs' % exp],
+                                   '1', 0)
 
         for j, tp in enumerate(['Early', 'Late']):
 
@@ -666,7 +673,12 @@ def plot_controlling_spectra(exp):
     fig, axs = plt.subplots(1, 3, figsize=(24, 8))
 
     types = ['ns2', 'ns5']
+
+    # hack the legend to be color agnostic
     legend = ['Neural Recording', 'Stimulation Command']
+    axs[2].axvline(-3, color='k')
+    axs[2].axvline(-3, color='k', linestyle='--')
+    axs[2].legend(legend)
 
     for i, condition in enumerate(config['conditions']):
 
@@ -693,12 +705,8 @@ def plot_controlling_spectra(exp):
                     linestyle=linestyle)
             ax.set_title(condition)
             ax.set_xlabel('Frequency [Hz]')
+            ax.set_xlim((freqs[0], freqs[-1]))
             ax.set_ylabel('Normalized Power')
-        if i == 2:
-            ax.legend(legend)
-            leg = ax.get_legend()
-            leg.legendHandles[0].set_color('black')
-            leg.legendHandles[1].set_color('black')
 
     plt.tight_layout()
     sns.despine()

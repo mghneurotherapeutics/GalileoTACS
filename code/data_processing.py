@@ -27,7 +27,11 @@ def extract_blackrock_info(mat_file, blackrock_type):
     file_obj = h5py.File(mat_file)
     struct = file_obj[blackrock_type.upper()]
 
-    info['data'] = np.array(struct['Data']).T
+    if 'saline1' in mat_file:
+        data = [file_obj[struct['Data'][0, 0]], file_obj[struct['Data'][1, 0]]]
+        info['data'] = np.concatenate(data, axis=0).T
+    else:
+        info['data'] = np.array(struct['Data']).T
     info['srate'] = struct['MetaTags']['SamplingFreq'][0][0]
 
     # extract the digital to analog conversion factor as the ratio

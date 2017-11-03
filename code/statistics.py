@@ -82,7 +82,8 @@ def compute_bootstrap_p_value(power, bootstrap_dist, times, toi):
     return p_num / p_denom
 
 
-def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, chs, config):
+def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, chs, config,
+                             exp):
     """ Helper function to compute the bootstrapped band power for a
     particular re-sampled index.
 
@@ -112,7 +113,8 @@ def compute_bootstrap_sample(bootstrap_ix, power, times, freqs, chs, config):
     power = baseline_normalize(power, config['baseline'], times)
 
     # reduce over array
-    power = reduce_array_power(power, chs, config['bad_chs'], '1', axis=0)
+    power = reduce_array_power(power, chs, config['%s_bad_chs' % exp], '1',
+                               axis=0)
 
     # reduce over band
     output = []
@@ -136,7 +138,7 @@ def compute_bootstrap_wrapper(ix):
     """
 
     return compute_bootstrap_sample(bootstrap_cond_ix[ix], power,
-                                    times, freqs, chs, config)
+                                    times, freqs, chs, config, exper)
 
 
 def compute_bootstrap_distribution(exp):
@@ -159,7 +161,8 @@ def compute_bootstrap_distribution(exp):
         numpy file.
     """
 
-    global power, times, freqs, chs, bootstrap_cond_ix, config
+    global power, times, freqs, chs, bootstrap_cond_ix, config, exper
+    exper = exp
 
     # load in configurations
     with open('./experiment_config.json', 'r') as f:
@@ -180,7 +183,7 @@ def compute_bootstrap_distribution(exp):
         base_ix = np.arange(power.shape[0])
         alpha_power, beta_power = compute_bootstrap_sample(base_ix, power,
                                                            times, freqs, chs,
-                                                           config)
+                                                           config, exp)
 
         # loop through all bootstrap samples in parallel
         bootstrap_cond_ix = bootstrap_indices[condition]
@@ -293,8 +296,9 @@ def pre_compute_permutation_indices(exp):
     np.random.seed(config['random_seed'])
 
     permutation_indices = {}
+    ss = min(config['%s_sample_sizes' % exp])
 
-    for ss, t in zip(config['%s_sample_sizes' % exp], tests):
+    for t in tests:
         permutations = np.zeros((config['num_permutations'], ss * 2),
                                 dtype=np.int32)
         ix = np.arange(ss * 2)
@@ -336,7 +340,7 @@ def compute_permutation_p_value(base_power, permutation_dist):
 
 def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
                                permutation_indices, times, freqs, chs, config,
-                               comp):
+                               comp, exp):
     """ Helper function to compute the permuted toi band power difference for
     a particular permutation of trials between two conditions.
 
@@ -396,10 +400,10 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     power = tmp
 
     # reduce over array
-    power[0] = reduce_array_power(power[0], chs, config['bad_chs'], '1',
-                                  axis=0)
-    power[1] = reduce_array_power(power[1], chs, config['bad_chs'], '1',
-                                  axis=0)
+    power[0] = reduce_array_power(power[0], chs, config['%s_bad_chs' % exp],
+                                  '1', axis=0)
+    power[1] = reduce_array_power(power[1], chs, config['%s_bad_chs' % exp],
+                                  '1', axis=0)
 
     # compute toi band power difference
     diffs = []
@@ -434,7 +438,7 @@ def compute_permutation_wrapper(ix):
     return compute_permutation_sample(ix, all_conditions_power,
                                       trial_indices,
                                       permutation_ix,
-                                      times, freqs, chs, config, comp)
+                                      times, freqs, chs, config, comp, exper)
 
 
 def compute_permutation_distributions(exp):
@@ -460,15 +464,17 @@ def compute_permutation_distributions(exp):
     """
 
     global all_conditions_power, times, freqs, chs, trial_indices
-    global permutation_ix, comp, config
+    global permutation_ix, comp, config, exper
+
+    exper = exp
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
 
     # load pre-sampled indices
-    f = './stats/%s_experiment/condition_permutation_indices.npz' % exp
+    f = '../stats/%s_experiment/condition_permutation_indices.npz' % exp
     permutation_indices = np.load(f)
-    f = './stats/%s_experiment/condition_subsample_indices.npz' % exp
+    f = '../stats/%s_experiment/condition_subsample_indices.npz' % exp
     trial_indices = np.load(f)
     tmp = {}
     for condition in config['conditions']:
@@ -487,7 +493,7 @@ def compute_permutation_distributions(exp):
         # collect all power for the relevant conditions
         all_conditions_power = {}
         for condition in comp:
-            power, chs, times, freqs = load_power_data('saline', condition)
+            power, chs, times, freqs = load_power_data(exp, condition)
             all_conditions_power[condition] = power
 
         # get the permutation index
@@ -498,7 +504,7 @@ def compute_permutation_distributions(exp):
         base_diffs = compute_permutation_sample(-1, all_conditions_power,
                                                 trial_indices, permutation_ix,
                                                 times, freqs, chs, config,
-                                                comp)
+                                                comp, exp)
         for i, band in enumerate(['alpha', 'beta']):
             permutation_info['%s_diff' % band] = base_diffs[i]
 
@@ -520,7 +526,7 @@ def compute_permutation_distributions(exp):
         permutation_info['beta_p_value'] = tmp
 
         # save the permutation information
-        f = './stats/%s_experiment/%s-%s_%s_permutation_info.npz'
+        f = '../stats/%s_experiment/%s-%s_%s_permutation_info.npz'
         np.savez_compressed(f % (exp, comp[0], comp[1], exp),
                             alpha_dist=permutation_info['alpha_perm_dist'],
                             beta_dist=permutation_info['beta_perm_dist'],
@@ -556,10 +562,10 @@ def compute_array_permutation_distribution(exp):
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
 
-    np.random.seed(config['random_seed'])
-
     for condition in config['conditions']:
         print(condition)
+
+        np.random.seed(config['random_seed'])
 
         # load all data for condition
         power, chs, times, freqs = load_power_data(exp, condition)
@@ -569,39 +575,37 @@ def compute_array_permutation_distribution(exp):
         power = reduce_toi_power(power, times, config['toi'], axis=-1)
 
         perm_info = {}
-
         for band in ['alpha', 'beta']:
-
             perm_info['%s_perm_dist' % band] = []
 
-            # reduce to desired band
-            band_power = reduce_band_power(power, freqs, config[band],
-                                           axis=-1)
-
-            # compute base t-statistic
-            arr1_ix = [ix for ix in np.arange(len(chs))
-                       if 'elec1' in chs[ix] and
-                       chs[ix] not in config['bad_chs']]
-            arr2_ix = [ix for ix in np.arange(len(chs)) if 'elec2' in chs[ix]]
-            perm_info['%s_diff' % band] = ttest_ind(band_power[arr1_ix],
-                                                    band_power[arr2_ix])[0]
-
-            # build the permutation distribution
-            for i in range(config['num_permutations']):
-
-                # shuffle channel membership
+        # build the permutation distribution
+        for i in range(config['num_permutations'] + 1):
+            if i > 0:
+                # shuffle channel array membership
                 np.random.shuffle(chs)
 
-                # compute permutation t-statistic
-                arr1_ix = [ix for ix in np.arange(len(chs))
-                           if 'elec1' in chs[ix] and
-                           chs[ix] not in config['bad_chs']]
-                arr2_ix = [ix for ix in np.arange(len(chs))
-                           if 'elec2' in chs[ix]]
-                dist_ix = '%s_perm_dist' % band
-                perm_info[dist_ix].append(ttest_ind(band_power[arr1_ix],
+            # select out array 1 and array 2 channels
+            arr1_ix = [ix for ix in np.arange(len(chs))
+                       if 'elec1' in chs[ix] and
+                       chs[ix] not in config['%s_bad_chs' % exp]]
+            arr2_ix = [ix for ix in np.arange(len(chs)) if 'elec2' in chs[ix]]
+
+            for band in ['alpha', 'beta']:
+
+                # reduce to desired band
+                band_power = reduce_band_power(power, freqs, config[band],
+                                               axis=-1)
+
+                if i == 0:
+                    tmp = '%s_diff' % band
+                    perm_info[tmp] = ttest_ind(band_power[arr1_ix],
+                                               band_power[arr2_ix])[0]
+                else:
+                    tmp = '%s_perm_dist' % band
+                    perm_info[tmp].append(ttest_ind(band_power[arr1_ix],
                                                     band_power[arr2_ix])[0])
 
+        for band in ['alpha', 'beta']:
             # compute the p-value
             tmp1 = '%s_p_value' % band
             tmp2 = '%s_diff' % band
