@@ -676,8 +676,8 @@ def plot_controlling_spectra(exp):
 
     # hack the legend to be color agnostic
     legend = ['Neural Recording', 'Stimulation Command']
-    axs[2].axvline(-3, color='k')
     axs[2].axvline(-3, color='k', linestyle='--')
+    axs[2].axvline(-3, color='k')
     axs[2].legend(legend)
 
     for i, condition in enumerate(config['conditions']):
