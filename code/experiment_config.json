@@ -2,7 +2,7 @@
     "conditions": ["Open", "Closed", "Brain"],
     "main_sample_sizes": [100, 100, 80],
     "saline_sample_sizes": [25, 19, 28],
-    "n_jobs": 3,
+    "n_jobs": 2,
 
     "lowpass": 35,
     "highpass": 0.5,

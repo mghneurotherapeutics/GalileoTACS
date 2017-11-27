@@ -33,7 +33,7 @@ def pre_compute_bootstrap_indices(exp):
                                                 size=(config['num_bootstraps'],
                                                       ss),
                                                 replace=True)
-    f = '../stats/%s_experiment/condition_bootstrap_indices.npz' % exp
+    f = '../data/stats/%s_experiment/condition_bootstrap_indices.npz' % exp
     np.savez_compressed(f, Open=bootstrap_indices['Open'],
                         Closed=bootstrap_indices['Closed'],
                         Brain=bootstrap_indices['Brain'],
@@ -169,7 +169,7 @@ def compute_bootstrap_distribution(exp):
         config = json.load(f)
 
     # load in pre-computes bootstrap re-sample indices
-    f = '../stats/%s_experiment/condition_bootstrap_indices.npz' % exp
+    f = '../data/stats/%s_experiment/condition_bootstrap_indices.npz' % exp
     bootstrap_indices = np.load(f)
     num_bootstrap_samples = bootstrap_indices['num_samples']
 
@@ -204,7 +204,7 @@ def compute_bootstrap_distribution(exp):
                                            times, config['toi'])
 
         # save
-        f = '../stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
+        f = '../data/stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
         np.savez_compressed(f, alpha=alpha_power, beta=beta_power,
                             alpha_dist=alpha_bootstrap_samples,
                             beta_dist=beta_bootstrap_samples,
@@ -262,17 +262,20 @@ def pre_compute_subsample_indices(exp):
     trial_indices = {}
 
     sample_sizes = config['%s_sample_sizes' % exp]
-    for oss, dss, c in zip(sample_sizes, [min(sample_sizes)] * 3,
-                           config['conditions']):
+    oss = max(sample_sizes)
+    dss = min(sample_sizes)
+
+    # only subsample for open and closed
+    for c in config['conditions'][:2]:
+
         trial_indices[c] = np.zeros((config['num_permutations'], dss),
                                     dtype=np.int32)
         for i in range(config['num_permutations']):
             trial_indices[c][i, :] = np.random.choice(oss, size=dss,
                                                       replace=False)
 
-    f = '../stats/%s_experiment/condition_subsample_indices.npz'
+    f = '../data/stats/%s_experiment/condition_subsample_indices.npz'
     np.savez_compressed(f % exp, Closed=trial_indices['Closed'],
-                        Brain=trial_indices['Brain'],
                         Open=trial_indices['Open'])
 
 
@@ -296,9 +299,11 @@ def pre_compute_permutation_indices(exp):
     np.random.seed(config['random_seed'])
 
     permutation_indices = {}
-    ss = min(config['%s_sample_sizes' % exp])
+    b_ss = min(config['%s_sample_sizes' % exp])
+    oc_ss = max(config['%s_sample_sizes' % exp])
+    sses = [oc_ss, b_ss, b_ss]
 
-    for t in tests:
+    for ss, t in zip(sses, tests):
         permutations = np.zeros((config['num_permutations'], ss * 2),
                                 dtype=np.int32)
         ix = np.arange(ss * 2)
@@ -307,12 +312,14 @@ def pre_compute_permutation_indices(exp):
             permutations[i, :] = ix
         permutation_indices[t] = permutations
 
-    f = '../stats/%s_experiment/condition_permutation_indices.npz'
-    np.savez_compressed(f % exp,
-                        Open_Closed=permutation_indices['Open-Closed'],
-                        Open_Brain=permutation_indices['Open-Brain'],
-                        Brain_Closed=permutation_indices['Brain-Closed'],
-                        num_permutations=config['num_permutations'])
+    # Don't save out main indices due to
+    if exp != 'main':
+        f = '../data/stats/%s_experiment/condition_permutation_indices.npz'
+        np.savez_compressed(f % exp,
+                            Open_Closed=permutation_indices['Open-Closed'],
+                            Open_Brain=permutation_indices['Open-Brain'],
+                            Brain_Closed=permutation_indices['Brain-Closed'],
+                            num_permutations=config['num_permutations'])
 
 
 def compute_permutation_p_value(base_power, permutation_dist):
@@ -375,7 +382,7 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     # we downsample to match trial sizes
     power = []
     for c in comp:
-        if perm_num != -1:
+        if perm_num != -1 and c != 'Brain' and 'Brain' in comp:
             trial_ix = trial_indices[c][perm_num, :]
             power.append(all_conditions_power[c][trial_ix, :, :, :].squeeze())
         else:
@@ -422,23 +429,23 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     return diffs
 
 
-def compute_permutation_wrapper(ix):
-    """ Simple wrapper function to facilitate parallelization of the
-    permutations.
+# def compute_permutation_wrapper(ix):
+#     """ Simple wrapper function to facilitate parallelization of the
+#     permutations.
 
-    This function allows a single parameter function to be used for
-    parallelization. It simply calls compute_permutation_sample making
-    use of several arguments that were made global in
-    compute_permutation_distributions.
+#     This function allows a single parameter function to be used for
+#     parallelization. It simply calls compute_permutation_sample making
+#     use of several arguments that were made global in
+#     compute_permutation_distributions.
 
-    Args:
-        ix: The index of the re-sampled indices to use.
-    """
+#     Args:
+#         ix: The index of the re-sampled indices to use.
+#     """
 
-    return compute_permutation_sample(ix, all_conditions_power,
-                                      trial_indices,
-                                      permutation_ix,
-                                      times, freqs, chs, config, comp, exper)
+#     return compute_permutation_sample(ix, all_conditions_power,
+#                                       trial_indices,
+#                                       permutation_ix,
+#                                       times, freqs, chs, config, comp, exper)
 
 
 def compute_permutation_distributions(exp):
@@ -463,18 +470,15 @@ def compute_permutation_distributions(exp):
         compressed numpy file.
     """
 
-    global all_conditions_power, times, freqs, chs, trial_indices
-    global permutation_ix, comp, config, exper
-
     exper = exp
 
     with open('./experiment_config.json', 'r') as f:
         config = json.load(f)
 
     # load pre-sampled indices
-    f = '../stats/%s_experiment/condition_permutation_indices.npz' % exp
+    f = '../data/stats/%s_experiment/condition_permutation_indices.npz' % exp
     permutation_indices = np.load(f)
-    f = '../stats/%s_experiment/condition_subsample_indices.npz' % exp
+    f = '../data/stats/%s_experiment/condition_subsample_indices.npz' % exp
     trial_indices = np.load(f)
     tmp = {}
     for condition in config['conditions']:
@@ -509,9 +513,14 @@ def compute_permutation_distributions(exp):
             permutation_info['%s_diff' % band] = base_diffs[i]
 
         num_permutations = permutation_indices['num_permutations']
-        par = Parallel(config['n_jobs'])
-        perm_diffs = par(delayed(compute_permutation_wrapper)(ix)
-                         for ix in range(num_permutations))
+        perm_diffs = []
+        for ix in range(num_permutations):
+            perm_diffs.append(compute_permutation_sample(ix,
+                                                         all_conditions_power,
+                                                         trial_indices,
+                                                         permutation_ix,
+                                                         times, freqs, chs,
+                                                         config, comp, exper))
 
         permutation_info['alpha_perm_dist'] = [diff[0] for diff in perm_diffs]
         permutation_info['beta_perm_dist'] = [diff[1] for diff in perm_diffs]
@@ -526,7 +535,7 @@ def compute_permutation_distributions(exp):
         permutation_info['beta_p_value'] = tmp
 
         # save the permutation information
-        f = '../stats/%s_experiment/%s-%s_%s_permutation_info.npz'
+        f = '../data/stats/%s_experiment/%s-%s_%s_permutation_info.npz'
         np.savez_compressed(f % (exp, comp[0], comp[1], exp),
                             alpha_dist=permutation_info['alpha_perm_dist'],
                             beta_dist=permutation_info['beta_perm_dist'],
@@ -614,7 +623,7 @@ def compute_array_permutation_distribution(exp):
                                                           perm_info[tmp3])
 
         # save permutation info to file
-        f = '../stats/%s_experiment/' % exp + \
+        f = '../data/stats/%s_experiment/' % exp + \
             '%s_array_permutation_info.npz' % condition
         np.savez_compressed(f, alpha_dist=perm_info['alpha_perm_dist'],
                             beta_dist=perm_info['beta_perm_dist'],
