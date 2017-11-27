@@ -18,6 +18,8 @@ Most of the analysis was done with Python packages. I have included an environme
 
 For more information on conda environments see <a href="https://conda.io/docs/user-guide/tasks/manage-environments.html">here</a>. Within the galileo environment you can then run all of the Python code.
 
+Additionally, I highly recommend setting up jupyter notebook extensions to allow a table of contents for navigating the juptyer analysis notebook. This can be done by following steps 2 & 3 <a href="https://github.com/ipython-contrib/jupyter_contrib_nbextensions">here</a> (step 1 has already been done and is packaged in the environment). The extension is called Table of Contents (2). As a result, you will be able to click to different sections in the analysis notebook without having to scroll through.
+
 ### MNE-C Tools
 
 ### Blackrock & MATLAB
