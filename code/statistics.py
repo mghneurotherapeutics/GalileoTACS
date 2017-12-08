@@ -204,7 +204,8 @@ def compute_bootstrap_distribution(exp):
                                            times, config['toi'])
 
         # save
-        f = '../data/stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
+        f = '../data/stats/%s_experiment/%s_bootstrap_info.npz' % (exp,
+                                                                   condition)
         np.savez_compressed(f, alpha=alpha_power, beta=beta_power,
                             alpha_dist=alpha_bootstrap_samples,
                             beta_dist=beta_bootstrap_samples,
@@ -429,23 +430,23 @@ def compute_permutation_sample(perm_num, all_conditions_power, trial_indices,
     return diffs
 
 
-# def compute_permutation_wrapper(ix):
-#     """ Simple wrapper function to facilitate parallelization of the
-#     permutations.
+def compute_permutation_wrapper(ix):
+    """ Simple wrapper function to facilitate parallelization of the
+    permutations.
 
-#     This function allows a single parameter function to be used for
-#     parallelization. It simply calls compute_permutation_sample making
-#     use of several arguments that were made global in
-#     compute_permutation_distributions.
+    This function allows a single parameter function to be used for
+    parallelization. It simply calls compute_permutation_sample making
+    use of several arguments that were made global in
+    compute_permutation_distributions.
 
-#     Args:
-#         ix: The index of the re-sampled indices to use.
-#     """
+    Args:
+        ix: The index of the re-sampled indices to use.
+    """
 
-#     return compute_permutation_sample(ix, all_conditions_power,
-#                                       trial_indices,
-#                                       permutation_ix,
-#                                       times, freqs, chs, config, comp, exper)
+    return compute_permutation_sample(ix, all_conditions_power,
+                                      trial_indices,
+                                      permutation_ix,
+                                      times, freqs, chs, config, comp, exper)
 
 
 def compute_permutation_distributions(exp):
@@ -470,6 +471,8 @@ def compute_permutation_distributions(exp):
         compressed numpy file.
     """
 
+    global all_conditions_power, trial_indices, times, freqs, chs, config
+    global comp, exper, permutation_ix
     exper = exp
 
     with open('./experiment_config.json', 'r') as f:
@@ -514,13 +517,9 @@ def compute_permutation_distributions(exp):
 
         num_permutations = permutation_indices['num_permutations']
         perm_diffs = []
-        for ix in range(num_permutations):
-            perm_diffs.append(compute_permutation_sample(ix,
-                                                         all_conditions_power,
-                                                         trial_indices,
-                                                         permutation_ix,
-                                                         times, freqs, chs,
-                                                         config, comp, exper))
+        par = Parallel(n_jobs=config['n_jobs'])
+        perm_diffs = par(delayed(compute_permutation_wrapper)(ix)
+                         for ix in range(num_permutations))
 
         permutation_info['alpha_perm_dist'] = [diff[0] for diff in perm_diffs]
         permutation_info['beta_perm_dist'] = [diff[1] for diff in perm_diffs]

@@ -36,7 +36,7 @@ def plot_condition_band_comparison(exp):
 
     for color, c in zip(config['colors'], config['conditions']):
 
-        f = '../stats/%s_experiment/%s_bootstrap_info.npz'
+        f = '../data/stats/%s_experiment/%s_bootstrap_info.npz'
         bootstrap_info = np.load(f % (exp, c))
 
         # remove the stimulation period from the time labels
@@ -114,7 +114,7 @@ def plot_condition_toi_comparison(exp):
                                 config['colors'],
                                 config['conditions']):
 
-        f = '../stats/%s_experiment/%s_bootstrap_info.npz'
+        f = '../data/stats/%s_experiment/%s_bootstrap_info.npz'
         bootstrap_info = np.load(f % (exp, c))
         times = bootstrap_info['times']
 
@@ -134,12 +134,12 @@ def plot_condition_toi_comparison(exp):
             ci = [dist[lower_ix], dist[upper_ix]]
 
             axs[i].bar(bar_ix, power, color=color)
-            axs[i].plot([bar_ix + .4, bar_ix + .4], ci, color='k',
+            axs[i].plot([bar_ix, bar_ix], ci, color='k',
                         label='_nolegend_')
 
             axs[i].set_title("%s Power" % band.capitalize())
 
-            axs[i].set_xlim((.8, 4))
+            axs[i].set_xlim((.4, 3.6))
             axs[i].set_xticks(())
             axs[i].set_ylim((-.7, .7))
 
@@ -149,15 +149,18 @@ def plot_condition_toi_comparison(exp):
     axs[0].set_ylabel("dB Change From Baseline")
 
     # Statistical Annotations
-    # x1, x2 = 1.4, 2.38
-    # y, h, col = .4, .1, 'k'
-    # axs[0].plot([x1, x1, x2, x2], [y, y+h, y+h, y], lw=2.5, c=col)
-    # axs[0].text((x1+x2)*.5, y+h, "p = .041", ha='center', va='bottom', color=col)
+    if exp == 'main':
+        x1, x2 = 1, 1.98
+        y, h, col = .4, .1, 'k'
+        axs[0].plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=2.5, c=col)
+        axs[0].text((x1 + x2) * .5, y + h, "p = .041", ha='center',
+                    va='bottom', color=col)
 
-    # x1, x2 = 2.42, 3.4
-    # y, h, col = .4, .1, 'k'
-    # axs[0].plot([x1, x1, x2, x2], [y, y+h, y+h, y], lw=2.5, c=col)
-    # axs[0].text((x1+x2)*.5, y+h, "p = .016", ha='center', va='bottom', color=col)
+        x1, x2 = 2.02, 3.0
+        y, h, col = .4, .1, 'k'
+        axs[0].plot([x1, x1, x2, x2], [y, y + h, y + h, y], lw=2.5, c=col)
+        axs[0].text((x1 + x2) * .5, y + h, "p = .016", ha='center',
+                    va='bottom', color=col)
 
     sns.despine()
     return fig
@@ -289,7 +292,7 @@ def plot_array_toi_comparison(exp):
 
     for i, c in enumerate(config['conditions']):
 
-        f = '../stats/%s_experiment/%s_array_permutation_info.npz'
+        f = '../data/stats/%s_experiment/%s_array_permutation_info.npz'
         perm_info = np.load(f % (exp, c))
 
         power, chs, times, freqs = load_power_data(exp, c)
@@ -326,7 +329,7 @@ def plot_array_toi_comparison(exp):
             axs[j].set_xticks([x + .8 for x in [0, 2, 4]])
             axs[j].set_xticklabels(config['conditions'])
             axs[j].set_ylim((-.5, .2))
-            axs[j].set_xlim((0, 6))
+            axs[j].set_xlim((-.6, 5.4))
             axs[j].set_ylabel('dB Change From Baseline')
             axs[j].axhline(0, color='k', label='_nolegend_')
 
@@ -336,7 +339,7 @@ def plot_array_toi_comparison(exp):
                 p = 'p < .001'
             else:
                 p = 'p = %.03f' % p
-            x1, x2 = i * 2 + .4, i * 2 + 1.2
+            x1, x2 = i * 2, i * 2 + 0.8
             y = stat_ys[j * 3 + i]
             hmult = stat_hmults[j * 3 + i]
             h = stat_hs[j * 3 + i]
@@ -384,7 +387,7 @@ def plot_bootstrap_distributions(exp):
 
     for i, condition in enumerate(config['conditions']):
 
-        f = '../stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
+        f = '../data/stats/%s_experiment/%s_bootstrap_info.npz' % (exp, condition)
         bootstrap_info = np.load(f)
 
         for j, band in enumerate(['alpha', 'beta']):
@@ -444,7 +447,7 @@ def plot_permutation_distributions(exp):
     plt.subplots_adjust(hspace=0.4, wspace=0.2)
 
     for i, comp in enumerate(comparisons):
-        f = '../stats/%s_experiment/%s_%s_permutation_info.npz'
+        f = '../data/stats/%s_experiment/%s_%s_permutation_info.npz'
         perm_info = np.load(f % (exp, comp, exp))
 
         # plot permutation distribution
@@ -495,7 +498,7 @@ def plot_array_permutation_distributions(exp):
     for i, condition in enumerate(config['conditions']):
 
         # load condition permutation info
-        f = '../stats/%s_experiment/' % exp + \
+        f = '../data/stats/%s_experiment/' % exp + \
             '%s_array_permutation_info.npz' % condition
         perm_info = np.load(f)
 
