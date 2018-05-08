@@ -288,7 +288,7 @@ def plot_array_toi_comparison(exp):
 
     stat_ys = [-.3, .15, -.4, -.2, .15, -.35]
     stat_hmults = [3, 1.5, 3, 3, 1.5, 3]
-    stat_hs = [-.02, .02, -.02, -.02, .02, -.02]
+    stat_hs = [-.03, .02, -.03, -.03, .02, -.03]
 
     for i, c in enumerate(config['conditions']):
 
@@ -309,37 +309,45 @@ def plot_array_toi_comparison(exp):
             band_power = reduce_band_power(power, freqs, config[band], axis=1)
             toi_power = reduce_toi_power(band_power, times, config['toi'],
                                          axis=-1)
+            
 
             for k, arr in enumerate([arr1_ix, arr2_ix]):
                 arr_power = toi_power[arr].mean(axis=0)
-                arr_stderr = toi_power[arr].std(axis=0) / np.sqrt(len(arr))
+                
+                dist = np.sort(simple_bootstrap(toi_power[arr][:, np.newaxis], axis=0).squeeze().mean(axis=0))
+                lower_ix = int(len(dist) * .025)
+                upper_ix = int(len(dist) * .975)
+                ci = [dist[lower_ix], dist[upper_ix]]
 
                 bar_tick = i * 2 + k * .8
 
                 if k == 0:
-                    axs[j].bar(bar_tick, arr_power, color=config['colors'][i],
-                               yerr=arr_stderr, ecolor='k')
+                    axs[j].bar(bar_tick, arr_power, color=config['colors'][i])
+                    axs[j].plot([bar_tick + .4, bar_tick + .4], ci, color='k',
+                                label='_nolegend_')
                 else:
                     axs[j].bar(bar_tick, arr_power, facecolor='none',
                                edgecolor=config['colors'][i], linewidth=4,
-                               yerr=arr_stderr, ecolor='k', hatch='/')
+                               hatch='/')
+                    axs[j].plot([bar_tick + .4, bar_tick + .4], ci, color='k',
+                                label='_nolegend_')
 
             # pretty axis
             axs[j].set_title('%s Power' % band.capitalize(), y=1.05)
             axs[j].set_xticks([x + .8 for x in [0, 2, 4]])
             axs[j].set_xticklabels(config['conditions'])
-            axs[j].set_ylim((-.5, .2))
-            axs[j].set_xlim((-.6, 5.4))
+            axs[j].set_ylim((-.7, .7))
+            axs[j].set_xlim((-.6, 6.4))
             axs[j].set_ylabel('dB Change From Baseline')
             axs[j].axhline(0, color='k', label='_nolegend_')
 
             # statistical annotation
             p = perm_info['%s_p_value' % band]
-            if p < .001:
-                p = 'p < .001'
+            if p < .0002:
+                p = 'p < .0002'
             else:
-                p = 'p = %.03f' % p
-            x1, x2 = i * 2, i * 2 + 0.8
+                p = 'p = %.04f' % p
+            x1, x2 = i * 2 + .4, i * 2 + 1.2
             y = stat_ys[j * 3 + i]
             hmult = stat_hmults[j * 3 + i]
             h = stat_hs[j * 3 + i]

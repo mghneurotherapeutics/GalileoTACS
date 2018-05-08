@@ -46,7 +46,7 @@ def compute_bootstrap_p_value(power, bootstrap_dist, times, toi):
         to zero.
 
         Checks to see how unlikely the given post-stimulation band power
-        within a time period of interest is, given a bootstrapped null
+       within a time period of interest is, given a bootstrapped null
         distribution that we shift to center around 0. It does this by
         calculating the % of bootstrapped values that are more extreme than
         the calculated value.
