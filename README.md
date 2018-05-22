@@ -21,7 +21,7 @@ The code was developed and run by Matthew Boggess under the supervision of Alik 
 Manuscript Title: Altering Alpha-Frequency Brain Oscillations with Rapid Analog Feedback-Driven Neurostimulation
 Authors: Alik Sunil Widge, Matthew Boggess, Andrew Mullen, Shivani Sheopory, Roman Loonis, Daniel Freeman, Earl K Miller
 
-Current Status: Pending at eLIFE 
+Current Status: Pending at PLOS ONE
   - Paper submitted to Frontiers on June 27, 2017. The initial commit represents the code in the state used to generate the figures for the initial submission.
   - It was returned with reviewer comments and then resubmitted with revision on November 3, 2017. The commit with message "revisions done: code that provided revisions submission" represents the commit that has the code at the status when revisions were submitted.
   - It was rejected from Frontiers after review. We cleaned up and then resubmitted to eLIFE.
