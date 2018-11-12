@@ -1,6 +1,6 @@
 # Galileo TACS
 
-This repository holds analysis code for the manuscript "Altering Alpha-Frequency Brain Oscillations with Rapid Analog Feedback-Driven Neurostimulation" currently under review at Frontiers in Neuroscience.
+This repository holds analysis code for the manuscript "Altering Alpha-Frequency Brain Oscillations with Rapid Analog Feedback-Driven Neurostimulation" currently accepted to PLOS ONE.
 
 The code was developed and run by Matthew Boggess under the supervision of Alik Widge (primary author).
 
@@ -19,7 +19,7 @@ The code was developed and run by Matthew Boggess under the supervision of Alik 
 ## Manuscript Information
 
 Manuscript Title: Altering Alpha-Frequency Brain Oscillations with Rapid Analog Feedback-Driven Neurostimulation
-Authors: Alik Sunil Widge, Matthew Boggess, Andrew Mullen, Shivani Sheopory, Roman Loonis, Daniel Freeman, Earl K Miller
+Authors: Alik Sunil Widge, Matthew Boggess, Alexander P Rockhill, Andrew Mullen, Shivani Sheopory, Roman Loonis, Daniel Freeman, Earl K Miller
 
 Current Status: Pending at PLOS ONE
   - Paper submitted to Frontiers on June 27, 2017. The initial commit represents the code in the state used to generate the figures for the initial submission.
